@@ -6,25 +6,41 @@ import sys
 import re
 
 def get_time_bounds(time_param):
-    now_local = datetime.datetime.now().astimezone() 
+    now_local = datetime.datetime.now().astimezone()
     
-    if time_param == "30m":
-        start_time = now_local - datetime.timedelta(minutes=30)
+    # 解析分钟格式 (如: 30m, 31m, 40m)
+    minute_match = re.match(r'^(\d+)m$', time_param)
+    if minute_match:
+        minutes = int(minute_match.group(1))
+        if minutes <= 0:
+            raise ValueError(f"Minutes must be positive: {time_param}")
+        start_time = now_local - datetime.timedelta(minutes=minutes)
         end_time = now_local
-    elif time_param == "1h":
-        start_time = now_local - datetime.timedelta(hours=1)
+        return start_time.astimezone(datetime.timezone.utc), end_time.astimezone(datetime.timezone.utc)
+    
+    # 解析小时格式 (如: 1h, 2h, 1.5h, 0.5h)
+    hour_match = re.match(r'^(\d+(?:\.\d+)?)h$', time_param)
+    if hour_match:
+        hours = float(hour_match.group(1))
+        if hours <= 0:
+            raise ValueError(f"Hours must be positive: {time_param}")
+        start_time = now_local - datetime.timedelta(hours=hours)
         end_time = now_local
-    elif time_param == "1d":
+        return start_time.astimezone(datetime.timezone.utc), end_time.astimezone(datetime.timezone.utc)
+    
+    # 解析自然日 (1d, yesterday)
+    if time_param == "1d":
         start_time = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
         end_time = now_local.replace(hour=23, minute=59, second=59, microsecond=999999)
-    elif time_param == "yesterday":
+        return start_time.astimezone(datetime.timezone.utc), end_time.astimezone(datetime.timezone.utc)
+    
+    if time_param == "yesterday":
         yesterday = now_local - datetime.timedelta(days=1)
         start_time = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
         end_time = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
-    else:
-        raise ValueError(f"Invalid time parameter: {time_param}")
+        return start_time.astimezone(datetime.timezone.utc), end_time.astimezone(datetime.timezone.utc)
     
-    return start_time.astimezone(datetime.timezone.utc), end_time.astimezone(datetime.timezone.utc)
+    raise ValueError(f"Invalid time parameter: {time_param}. Supported formats: Xm (minutes), Xh (hours), 1d, yesterday")
 
 def clean_html(raw_html):
     cleantext = re.sub(r'<.*?>', '', raw_html)
@@ -78,13 +94,15 @@ def scrape_ithome(time_param):
     print(f"Total: {len(matches)} news items found.")
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape ITHome news and format for summary.")
+    parser = argparse.ArgumentParser(
+        description="Scrape ITHome news and format for summary.",
+        epilog="Examples: --time 30m, --time 1.5h, --time 1d, --time yesterday"
+    )
     parser.add_argument(
         "--time", 
         type=str, 
         required=True, 
-        choices=["30m", "1h", "1d", "yesterday"],
-        help="Time range: 30m, 1h, 1d (today natural day), yesterday (yesterday natural day)"
+        help="Time range. Formats: Xm (minutes, e.g., 30m, 40m), Xh (hours, e.g., 1h, 1.5h), 1d (today), yesterday"
     )
     
     args = parser.parse_args()
